@@ -22,7 +22,7 @@ def main():
 
     # Load data from numpy file
     setup = CVAESetup(
-        numpy_file=str(DATA_DIR / 'transformed_data_u3.npy'),  # 4D array: [n_images, z, y, x]
+        numpy_file=str(DATA_DIR / 'transformed_data_t.npy'),  # 4D array: [n_images, z, y, x]
         batch_size=8
     )
 
@@ -42,7 +42,7 @@ def main():
 
     # Train model
     model, loss_dict = train_model(
-        model, train_loader, test_loader, device, grid_shape, epochs=100
+        model, train_loader, test_loader, device, grid_shape, epochs=300
     )
 
     # # Evaluate model
@@ -57,9 +57,9 @@ def main():
 
     recons = export_reconstructions_npy(
         model=model,
-        numpy_file=str(DATA_DIR / 'transformed_data_u3.npy'),
+        numpy_file=str(DATA_DIR / 'transformed_data_t.npy'),
         device=device,
-        output_file=os.path.join(save_dir, 'reconstructions_u3.npy'),
+        output_file=os.path.join(save_dir, 'reconstructions_t.npy'),
         batch_size=8
     )
 

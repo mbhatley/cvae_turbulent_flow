@@ -23,20 +23,21 @@ class Conv3DEncoder(nn.Module):
         self.grid_shape = grid_shape
         self.latent_size = latent_size
 
-        self.conv1 = nn.Conv3d(in_channels=1, out_channels=8, kernel_size=3, stride=1, padding=1)
-        self.bn1 = nn.BatchNorm3d(8)
-        self.conv2 = nn.Conv3d(in_channels=8, out_channels=16, kernel_size=3, stride=2, padding=1)
-        self.bn2 = nn.BatchNorm3d(16)
-        self.conv3 = nn.Conv3d(in_channels=16, out_channels=32, kernel_size=3, stride=2, padding=1)
-        self.bn3 = nn.BatchNorm3d(32)
+        self.conv1 = nn.Conv3d(in_channels=1, out_channels=16, kernel_size=3, stride=2, padding=1)
+        self.bn1 = nn.BatchNorm3d(16)
+        self.conv2 = nn.Conv3d(in_channels=16, out_channels=32, kernel_size=3, stride=2, padding=1)
+        self.bn2 = nn.BatchNorm3d(32)
+        self.conv3 = nn.Conv3d(in_channels=32, out_channels=64, kernel_size=3, stride=2, padding=1)
+        self.bn3 = nn.BatchNorm3d(64)
 
-        target_x = self._calc_conv_output_size(grid_shape[0], num_layers=3, kernel=3, stride=1, padding=1)
+
+        target_x = self._calc_conv_output_size(grid_shape[0], num_layers=3, kernel=3, stride=2, padding=1)
         target_y = self._calc_conv_output_size(grid_shape[1], num_layers=3, kernel=3, stride=2, padding=1)
         target_z = self._calc_conv_output_size(grid_shape[2], num_layers=3, kernel=3, stride=2, padding=1)
 
         self.bottleneck_shape = (target_x, target_y, target_z)
         self.pool = nn.AdaptiveAvgPool3d(self.bottleneck_shape)
-        self.flattened_size = 32 * target_x * target_y * target_z
+        self.flattened_size = 64 * target_x * target_y * target_z
 
         self.dropout = nn.Dropout(dropout_rate)
 
@@ -123,15 +124,15 @@ class Conv3DDecoder(nn.Module):
 
         # Project latent vector back up to bottleneck volume
         self.conv_proj = nn.Sequential(
-            nn.Linear(combined_latent, 32 * start_size),
+            nn.Linear(combined_latent, 64 * start_size),
             nn.GELU()
         )
 
-        self.deconv1 = nn.ConvTranspose3d(in_channels=32, out_channels=16, kernel_size=3, stride=2, padding=1)
-        self.bn1     = nn.BatchNorm3d(16)
-        self.deconv2 = nn.ConvTranspose3d(in_channels=16, out_channels=8,  kernel_size=3, stride=2, padding=1)
-        self.bn2     = nn.BatchNorm3d(8)
-        self.deconv3 = nn.ConvTranspose3d(in_channels=8,  out_channels=1,  kernel_size=3, stride=1, padding=1)
+        self.deconv1 = nn.ConvTranspose3d(in_channels=64, out_channels=32, kernel_size=3, stride=2, padding=1)
+        self.bn1     = nn.BatchNorm3d(32)
+        self.deconv2 = nn.ConvTranspose3d(in_channels=32, out_channels=16,  kernel_size=3, stride=2, padding=1)
+        self.bn2     = nn.BatchNorm3d(16)
+        self.deconv3 = nn.ConvTranspose3d(in_channels=16,  out_channels=1,  kernel_size=3, stride=2, padding=1)
 
         #self.final_resize = nn.AdaptiveMaxPool3d((x_dim, y_dim, z_dim))
         self.grid_bias    = nn.Parameter(torch.zeros(self.n_grid_points))
@@ -163,7 +164,7 @@ class Conv3DDecoder(nn.Module):
         batch_size = z.size(0)
 
         x = self.conv_proj(torch.cat([z, c], dim=1) if c is not None else z)
-        x = x.view(batch_size, 32, self.start_x, self.start_y, self.start_z)
+        x = x.view(batch_size, 64, self.start_x, self.start_y, self.start_z)
 
         x = F.gelu(self.bn1(self.deconv1(x)))
         x = self.dropout(x)
@@ -173,8 +174,10 @@ class Conv3DDecoder(nn.Module):
 
         #x = self.final_resize(x)
         x = F.interpolate(x, size=self.grid_shape, mode='trilinear', align_corners=False)
+        #x = x.view(batch_size, -1)
 
         return torch.sigmoid(x.view(batch_size, -1))
+        #return x.clamp(0,1) if not self.training else x
 
 
 # ============================================================================

@@ -11,7 +11,7 @@ class CVAEScheduler(nn.Module):
         """
         Cosine warmup learning rate implementation
         """
-        warmup_epochs = max(5, int(0.1 * epochs))
+        warmup_epochs = 10 # max(5, int(0.1 * epochs))
         cos_scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(
             optimizer, T_max=epochs - warmup_epochs, eta_min=1e-6
         )

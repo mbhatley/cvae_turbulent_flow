@@ -7,7 +7,7 @@ from src.shared.scheduler import get_scheduler
 
 
 def train_model(model, train_loader, test_loader, device, grid_shape,
-                epochs=150, initial_lr=1e-4, beta_start=0.1, beta_end=0.5):
+                epochs=150, initial_lr=1e-4, beta_start=0.05, beta_end=0.5):
 
     optimizer = AdamW(model.parameters(), lr=initial_lr, weight_decay=1e-5)
     scheduler, step_type = get_scheduler(optimizer, epochs, 100)
