@@ -119,19 +119,14 @@ class CVAEVisuals():
         """
         model.eval()
 
-        # Get test data - FIXED: Unpack tuple from DataLoader
         with torch.no_grad():
             for batch in test_loader:
-                # FIXED: DataLoader returns (images, masks, labels) tuple
-                images, masks, labels = batch
+                images, masks, conditioning = batch
                 images = images.to(device)
+                conditioning = conditioning.to(device)
 
-                conditioning = torch.zeros(images.size(0), 1, device=device)
-
-                # Forward pass
                 recon, mu, logvar = model(images, conditioning)
 
-                # Convert to numpy
                 originals = images.cpu().numpy()
                 reconstructions = recon.cpu().numpy()
                 break
@@ -244,16 +239,12 @@ class CVAEVisuals():
 
         model.eval()
 
-        # Get test samples - FIXED: Unpack tuple from DataLoader
         with torch.no_grad():
             for batch in test_loader:
-                # FIXED: DataLoader returns (images, masks, labels) tuple
-                images, masks, labels = batch
+                images, masks, conditioning = batch
                 images = images.to(device)
+                conditioning = conditioning.to(device)
 
-                conditioning = torch.zeros(images.size(0), 1, device=device)
-
-                # Forward pass
                 recon, mu, logvar = model(images, conditioning)
 
                 originals = images.cpu().numpy()
@@ -357,16 +348,12 @@ class CVAEVisuals():
         latent_codes = []
         batch_indices = []  # Track batch indices instead of labels
 
-        # FIXED: Unpack tuple from DataLoader
         with torch.no_grad():
             for batch_idx, batch in enumerate(test_loader):
-                # FIXED: DataLoader returns (images, masks, labels) tuple
-                images, masks, labels = batch
+                images, masks, conditioning = batch
                 images = images.to(device)
+                conditioning = conditioning.to(device)
 
-                conditioning = torch.zeros(images.size(0), 1, device=device)
-
-                # Encode using the model's encode method
                 mu, logvar = model.encode(images, conditioning)
 
                 latent_codes.append(mu.cpu().numpy())

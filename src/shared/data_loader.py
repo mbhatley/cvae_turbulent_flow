@@ -10,21 +10,21 @@ class CVAEDataset(Dataset):
     """
     Dataset for CVAE with NaN handling
     """
-    def __init__(self, images, labels=None):
+    def __init__(self, images, pod_coeffs=None):
         self.images = torch.FloatTensor(images)
         self.masks = (~torch.isnan(self.images)).float()
         self.images = torch.nan_to_num(self.images, nan=0.0)
 
-        if labels is not None:
-            self.labels = torch.LongTensor(labels)
+        if pod_coeffs is not None:
+            self.pod_coeffs = torch.FloatTensor(pod_coeffs)
         else:
-            self.labels = torch.zeros(len(images), dtype=torch.long)
+            self.pod_coeffs = torch.zeros(len(images), 1)
 
     def __len__(self):
         return len(self.images)
 
     def __getitem__(self, idx):
-        return self.images[idx], self.masks[idx], self.labels[idx]
+        return self.images[idx], self.masks[idx], self.pod_coeffs[idx]
 
 
 class CVAESetup():
@@ -34,16 +34,10 @@ class CVAESetup():
     Expected input shape: [n_images, z, y, x]
     """
 
-    def __init__(self, numpy_file, batch_size=32, model = '3d'):
-        """
-        Initialize data setup
-
-        :param numpy_file: 4D numpy array
-        :param batch_size: batch size
-        :param model: Defines if data is 2D or 3D. Default is 3D.
-        """
+    def __init__(self, numpy_file, batch_size=32, model='3d', pod_file=None):
         self.numpy_file = numpy_file
         self.batch_size = batch_size
+        self.pod_file = pod_file
 
     def setup_device(self):
         """
@@ -85,21 +79,27 @@ class CVAESetup():
         data_flat = np.zeros((n_images, grid_size))
 
         for i in range(n_images):
-            # Extract 3D volume [z, y, x]
-            volume = data_4d[i]
-
-            # Transpose to [x, y, z] to match grid_shape ordering
-            volume = np.transpose(volume, (2, 1, 0))
-
-            # Flatten to 1D
+            volume = np.transpose(data_4d[i], (2, 1, 0))
             data_flat[i] = volume.flatten()
 
-        train_data, test_data = train_test_split(data_flat, test_size=0.2, random_state=42)
+        pod_coeffs = None
+        if self.pod_file is not None:
+            pod_data = np.load(self.pod_file)
+            pod_coeffs = pod_data['coeffs_std']
+            n_modes = int(pod_data['n_modes'])
+            print(f"POD conditioning: {n_modes} modes, {pod_coeffs.shape[0]} samples")
+
+        indices = np.arange(n_images)
+        train_idx, test_idx = train_test_split(indices, test_size=0.2, random_state=42)
+
+        train_data = data_flat[train_idx]
+        test_data = data_flat[test_idx]
+        train_pod = pod_coeffs[train_idx] if pod_coeffs is not None else None
+        test_pod = pod_coeffs[test_idx] if pod_coeffs is not None else None
         print(f"Train: {len(train_data)} samples, Test: {len(test_data)} samples")
 
-        # Create datasets
-        train_dataset = CVAEDataset(train_data)
-        test_dataset = CVAEDataset(test_data)
+        train_dataset = CVAEDataset(train_data, pod_coeffs=train_pod)
+        test_dataset = CVAEDataset(test_data, pod_coeffs=test_pod)
 
         # Create data loaders
         train_loader = DataLoader(

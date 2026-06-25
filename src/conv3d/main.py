@@ -6,6 +6,7 @@ from datetime import datetime
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 DATA_DIR = PROJECT_ROOT / 'data'
 
+import numpy as np
 import torch
 
 from src.shared.data_loader import CVAESetup
@@ -20,10 +21,14 @@ def main():
     Main training pipeline using numpy array data
     """
 
-    # Load data from numpy file
+    pod_file = str(DATA_DIR / 't_pod_basis.npz')
+    pod_data = np.load(pod_file)
+    n_modes = int(pod_data['n_modes'])
+
     setup = CVAESetup(
-        numpy_file=str(DATA_DIR / 'transformed_data_t.npy'),  # 4D array: [n_images, z, y, x]
-        batch_size=8
+        numpy_file=str(DATA_DIR / 'transformed_data_t.npy'),
+        batch_size=8,
+        pod_file=pod_file,
     )
 
     viz = CVAEVisuals()
@@ -32,11 +37,10 @@ def main():
 
     train_loader, test_loader, grid_shape, grid_size = setup.load_data()
 
-    # Initialize model
     model = CVAE(
         grid_shape=grid_shape,
-        latent_size=128,
-        class_size=1,
+        latent_size=32,
+        class_size=n_modes,
         dropout_rate=0.2,
     ).to(device)
 
@@ -60,7 +64,8 @@ def main():
         numpy_file=str(DATA_DIR / 'transformed_data_t.npy'),
         device=device,
         output_file=os.path.join(save_dir, 'reconstructions_t.npy'),
-        batch_size=8
+        batch_size=8,
+        pod_file=pod_file,
     )
 
     # Generate visualizations

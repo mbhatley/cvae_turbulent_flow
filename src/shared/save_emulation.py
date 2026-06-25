@@ -36,7 +36,8 @@ def save_model(model, save_dir, config=None):
 
 
 def export_reconstructions_npy(model, numpy_file, device,
-                               output_file='reconstructions.npy', batch_size=8):
+                               output_file='reconstructions.npy', batch_size=8,
+                               pod_file=None):
     """
     Run all images through the model IN ORDER and save as 4D numpy array.
     Shape: [n_images, z, y, x] — same as input, ready for inverse ECDF.
@@ -50,7 +51,11 @@ def export_reconstructions_npy(model, numpy_file, device,
         volume = np.transpose(data_4d[i], (2, 1, 0))  # [z,y,x] -> [x,y,z]
         data_flat[i] = volume.flatten()
 
-    dataset = CVAEDataset(data_flat)
+    pod_coeffs = None
+    if pod_file is not None:
+        pod_coeffs = np.load(pod_file)['coeffs_std']
+
+    dataset = CVAEDataset(data_flat, pod_coeffs=pod_coeffs)
     loader = DataLoader(dataset, batch_size=batch_size, shuffle=False, num_workers=0)
 
     model.eval()
@@ -59,8 +64,7 @@ def export_reconstructions_npy(model, numpy_file, device,
     print("Running inference on all samples in order...")
     with torch.no_grad():
         for batch_idx, batch_data in enumerate(loader):
-            data_batch, _, _ = [item.to(device) for item in batch_data]
-            conditioning = torch.zeros(data_batch.size(0), 1, device=device)
+            data_batch, _, conditioning = [item.to(device) for item in batch_data]
             recon, _, _ = model(data_batch, conditioning)
             all_recons.append(recon.cpu().numpy())
             if (batch_idx + 1) % 10 == 0:
@@ -89,8 +93,7 @@ def evaluate_model(model, test_loader, device, save_latents=False, save_dir='res
 
     with torch.no_grad():
         for batch_data in test_loader:
-            data, mask, labels = [item.to(device) for item in batch_data]
-            conditioning = torch.zeros(data.size(0), 1, device=device)
+            data, mask, conditioning = [item.to(device) for item in batch_data]
 
             mu, logvar = model.encode(data, conditioning)
             recon, _, _ = model(data, conditioning)

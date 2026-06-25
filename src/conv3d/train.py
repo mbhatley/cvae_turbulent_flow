@@ -27,8 +27,7 @@ def train_model(model, train_loader, test_loader, device, grid_shape,
         epoch_train_kl = 0
 
         for batch_data in train_loader:
-            data, mask, labels = [item.to(device) for item in batch_data]
-            conditioning = torch.zeros(data.size(0), 1, device=device)
+            data, mask, conditioning = [item.to(device) for item in batch_data]
 
             optimizer.zero_grad()
             recon, mu, logvar = model(data, conditioning)
@@ -49,8 +48,7 @@ def train_model(model, train_loader, test_loader, device, grid_shape,
 
         with torch.no_grad():
             for batch_data in test_loader:
-                data, mask, labels = [item.to(device) for item in batch_data]
-                conditioning = torch.zeros(data.size(0), 1, device=device)
+                data, mask, conditioning = [item.to(device) for item in batch_data]
                 recon, mu, logvar = model(data, conditioning)
                 test_loss, recon_loss, kl_loss = compute_loss(recon, data, mu, logvar, grid_shape, beta=beta)
                 epoch_test_loss += test_loss.item()
