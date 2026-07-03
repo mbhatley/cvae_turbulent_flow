@@ -24,11 +24,11 @@ class Conv3DEncoder(nn.Module):
         self.latent_size = latent_size
 
         self.conv1 = nn.Conv3d(in_channels=1, out_channels=16, kernel_size=3, stride=2, padding=1)
-        self.bn1 = nn.BatchNorm3d(16)
+        self.bn1 = nn.GroupNorm(8, 16)
         self.conv2 = nn.Conv3d(in_channels=16, out_channels=32, kernel_size=3, stride=2, padding=1)
-        self.bn2 = nn.BatchNorm3d(32)
+        self.bn2 = nn.GroupNorm(8, 32)
         self.conv3 = nn.Conv3d(in_channels=32, out_channels=64, kernel_size=3, stride=2, padding=1)
-        self.bn3 = nn.BatchNorm3d(64)
+        self.bn3 = nn.GroupNorm(8, 64)
 
 
         target_x = self._calc_conv_output_size(grid_shape[0], num_layers=3, kernel=3, stride=2, padding=1)
@@ -62,7 +62,7 @@ class Conv3DEncoder(nn.Module):
                 nn.init.kaiming_normal_(m.weight, mode='fan_out', nonlinearity='relu')
                 if m.bias is not None:
                     nn.init.constant_(m.bias, 0)
-            elif isinstance(m, nn.BatchNorm3d):
+            elif isinstance(m, nn.GroupNorm):
                 nn.init.constant_(m.weight, 1)
                 nn.init.constant_(m.bias, 0)
             elif isinstance(m, nn.Linear):
@@ -129,9 +129,9 @@ class Conv3DDecoder(nn.Module):
         )
 
         self.deconv1 = nn.ConvTranspose3d(in_channels=64, out_channels=32, kernel_size=3, stride=2, padding=1)
-        self.bn1     = nn.BatchNorm3d(32)
+        self.bn1     = nn.GroupNorm(8, 32)
         self.deconv2 = nn.ConvTranspose3d(in_channels=32, out_channels=16,  kernel_size=3, stride=2, padding=1)
-        self.bn2     = nn.BatchNorm3d(16)
+        self.bn2     = nn.GroupNorm(8, 16)
         self.deconv3 = nn.ConvTranspose3d(in_channels=16,  out_channels=1,  kernel_size=3, stride=2, padding=1)
 
         #self.final_resize = nn.AdaptiveMaxPool3d((x_dim, y_dim, z_dim))
@@ -146,7 +146,7 @@ class Conv3DDecoder(nn.Module):
                 nn.init.kaiming_normal_(m.weight, mode='fan_out', nonlinearity='relu')
                 if m.bias is not None:
                     nn.init.constant_(m.bias, 0)
-            elif isinstance(m, nn.BatchNorm3d):
+            elif isinstance(m, nn.GroupNorm):
                 nn.init.constant_(m.weight, 1)
                 nn.init.constant_(m.bias, 0)
             elif isinstance(m, nn.Linear):

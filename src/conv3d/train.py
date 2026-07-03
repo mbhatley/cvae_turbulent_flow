@@ -1,3 +1,8 @@
+##################
+## Changes:
+## epochs 150 -> 210, beta_end 1 -> 0.7
+
+
 import numpy as np
 import torch
 from torch.optim import AdamW
@@ -7,7 +12,7 @@ from src.shared.scheduler import get_scheduler
 
 
 def train_model(model, train_loader, test_loader, device, grid_shape,
-                epochs=150, initial_lr=1e-4, beta_start=0.05, beta_end=0.5):
+                epochs=210, initial_lr=1e-4, beta_start=0.05, beta_end=0.7):
 
     optimizer = AdamW(model.parameters(), lr=initial_lr, weight_decay=1e-5)
     scheduler, step_type = get_scheduler(optimizer, epochs, 100)
@@ -18,7 +23,7 @@ def train_model(model, train_loader, test_loader, device, grid_shape,
 
     for epoch in range(1, epochs + 1):
         # KL annealing
-        beta = beta_start + (beta_end - beta_start) * min(epoch / (epochs * 0.5), 1.0)
+        beta = beta_start + (beta_end - beta_start) * min(epoch / (epochs * 0.7), 1.0)
 
         # Training
         model.train()
@@ -31,7 +36,7 @@ def train_model(model, train_loader, test_loader, device, grid_shape,
 
             optimizer.zero_grad()
             recon, mu, logvar = model(data, conditioning)
-            total_loss, recon_loss, kl_loss = compute_loss(recon, data, mu, logvar, grid_shape, beta=beta)
+            total_loss, recon_loss, kl_loss = compute_loss(recon, data, mu, logvar, grid_shape, beta=beta, mask=mask)
             total_loss.backward()
             torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=1.0)
             optimizer.step()
@@ -50,7 +55,7 @@ def train_model(model, train_loader, test_loader, device, grid_shape,
             for batch_data in test_loader:
                 data, mask, conditioning = [item.to(device) for item in batch_data]
                 recon, mu, logvar = model(data, conditioning)
-                test_loss, recon_loss, kl_loss = compute_loss(recon, data, mu, logvar, grid_shape, beta=beta)
+                test_loss, recon_loss, kl_loss = compute_loss(recon, data, mu, logvar, grid_shape, beta=beta, mask=mask)
                 epoch_test_loss += test_loss.item()
                 epoch_test_recon += recon_loss.item()
                 epoch_test_kl += kl_loss.item()

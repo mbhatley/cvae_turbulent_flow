@@ -38,19 +38,17 @@ class CVAELoss(nn.Module):
 
 
     @staticmethod
-    def compute_gradient_loss(prediction, target, grid_shape):
+    def compute_gradient_loss(prediction, target, grid_shape, mask=None):
         """
         Calculates the L1 difference in gradients between prediction and target.
         Forces the model to keep edges sharp and turbulent.
+        mask: [batch, grid_size] float tensor (1=valid, 0=NaN), or None.
         """
         x_dim, y_dim, z_dim = grid_shape
 
-        # Reshape to 5D: (Batch, Channel, D, H, W)
         prediction = prediction.view(-1, 1, x_dim, y_dim, z_dim)
-        target = target.view(-1, 1, x_dim, y_dim, z_dim)
+        target     = target.view(-1, 1, x_dim, y_dim, z_dim)
 
-        # Compute gradients in X, Y, Z directions
-        # We use simple finite difference
         pred_dx = torch.abs(prediction[:, :, 1:, :, :] - prediction[:, :, :-1, :, :])
         pred_dy = torch.abs(prediction[:, :, :, 1:, :] - prediction[:, :, :, :-1, :])
         pred_dz = torch.abs(prediction[:, :, :, :, 1:] - prediction[:, :, :, :, :-1])
@@ -59,16 +57,25 @@ class CVAELoss(nn.Module):
         target_dy = torch.abs(target[:, :, :, 1:, :] - target[:, :, :, :-1, :])
         target_dz = torch.abs(target[:, :, :, :, 1:] - target[:, :, :, :, :-1])
 
-        loss_dx = F.l1_loss(pred_dx, target_dx)
-        loss_dy = F.l1_loss(pred_dy, target_dy)
-        loss_dz = F.l1_loss(pred_dz, target_dz)
+        if mask is not None:
+            m = mask.view(-1, 1, x_dim, y_dim, z_dim)
+            mx = m[:, :, 1:, :, :] * m[:, :, :-1, :, :]
+            my = m[:, :, :, 1:, :] * m[:, :, :, :-1, :]
+            mz = m[:, :, :, :, 1:] * m[:, :, :, :, :-1]
+            loss_dx = (torch.abs(pred_dx - target_dx) * mx).sum() / (mx.sum() + 1e-8)
+            loss_dy = (torch.abs(pred_dy - target_dy) * my).sum() / (my.sum() + 1e-8)
+            loss_dz = (torch.abs(pred_dz - target_dz) * mz).sum() / (mz.sum() + 1e-8)
+        else:
+            loss_dx = F.l1_loss(pred_dx, target_dx)
+            loss_dy = F.l1_loss(pred_dy, target_dy)
+            loss_dz = F.l1_loss(pred_dz, target_dz)
 
         return loss_dx + loss_dy + loss_dz
 
     @staticmethod
     def compute_loss(recon_batch, data, mu, logvar, grid_shape, beta=1.0,
-                     extreme_weight=1.0, renyi_weight=0.0, grad_weight = 1.0,
-                     loss='l1'):
+                     extreme_weight=1.0, renyi_weight=0.0, grad_weight=1.0,
+                     loss='l1', mask=None):
         """
         ELBO loss with reconstruction (L1 or MSE), KL divergence, and optional gradient loss and Renji loss
         :param recon_batch:
@@ -81,11 +88,12 @@ class CVAELoss(nn.Module):
         :param renyi_weight: Weighting applied to renyi distributions. Default is 0.
         :param grad_weight: Weighting applied to gradient of the reconstruction loss. Default is 1.0.
         :param loss: Loss type. Options are L1 or None. L1 returns L1 loss, None returns MSE loss. Default is 'l1'.
+        :param mask: float tensor [batch, grid_size] with 1=valid, 0=NaN-filled. Applied to recon and grad losses.
         :return: total loss, reconstruction loss, KL loss
         """
 
         distance_from_mean = torch.abs(data - 0.5)
-        is_extreme = (distance_from_mean > 0.3).float()
+        is_extreme = (distance_from_mean > 0.45).float()
         weights = 1.0 + (is_extreme * extreme_weight)
 
         if loss == 'l1':
@@ -93,10 +101,13 @@ class CVAELoss(nn.Module):
         else:
             recon_loss = F.mse_loss(recon_batch, data, reduction='none')
 
-        recon_loss = (recon_loss * weights).mean()
+        if mask is not None:
+            recon_loss = (recon_loss * weights * mask).sum() / (mask.sum() + 1e-8)
+        else:
+            recon_loss = (recon_loss * weights).mean()
 
         # Gradient Loss (Keeps edges sharp)
-        grad_loss = CVAELoss.compute_gradient_loss(recon_batch, data, grid_shape)
+        grad_loss = CVAELoss.compute_gradient_loss(recon_batch, data, grid_shape, mask=mask)
 
         # Rényi divergence for distribution matching
         renyi_loss = CVAELoss.renyi_divergence(recon_batch, data, alpha=0.5)
@@ -109,8 +120,15 @@ class CVAELoss(nn.Module):
 
 # Module-level convenience function so train.py can call compute_loss() directly
 def compute_loss(recon_batch, data, mu, logvar, grid_shape, beta=1.0,
-                 extreme_weight=4.0, renyi_weight=0.0, grad_weight=1.0, loss='l1'):
+                 extreme_weight=1.5, renyi_weight=0.0, grad_weight=1, loss='l1', mask=None):
     return CVAELoss.compute_loss(recon_batch, data, mu, logvar, grid_shape,
                                  beta=beta, extreme_weight=extreme_weight,
                                  renyi_weight=renyi_weight, grad_weight=grad_weight,
-                                 loss=loss)
+                                 loss=loss, mask=mask)
+
+## Notes
+# results_20260702_090946 - extreme_weight = 1, grad_weight=1, is_extreme changed from 0.3 to 0.45
+# results_20260701_101111 - extreme_weight = 2, grad_weight=1, is_extreme changed from 0.3 to 0.45
+# results_20260701_101111 - extreme_weight = 1.5, grad_weight=1.5
+# results_20260701_082209 - extreme_weight = 2, grad_weight=1
+# results_2026630_202315 - extreme_weight = 4, grad_weight=1
