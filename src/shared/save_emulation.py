@@ -24,8 +24,8 @@ def save_model(model, save_dir, config=None):
         'timestamp': datetime.now().isoformat(),
         'grid_shape': model.grid_shape,
         'latent_size': model.latent_size,
-        'n_knots': model.n_knots,
-        'alpha': model.alpha
+        'class_size': model.class_size,
+        'dropout_rate': model.dropout_rate,
     }
 
     if config is not None:
@@ -44,18 +44,16 @@ def export_reconstructions_npy(model, numpy_file, device,
     """
     data_4d = np.load(numpy_file)
     n_images, z_dim, y_dim, x_dim = data_4d.shape
-    grid_size = x_dim * y_dim * z_dim
 
-    data_flat = np.zeros((n_images, grid_size))
-    for i in range(n_images):
-        volume = np.transpose(data_4d[i], (2, 1, 0))  # [z,y,x] -> [x,y,z]
-        data_flat[i] = volume.flatten()
+    # Match the spatial format that load_data() produces: [n, 1, x, y, z]
+    data_spatial = np.transpose(data_4d, (0, 3, 2, 1))
+    data_spatial = data_spatial[:, np.newaxis, :, :, :]
 
     pod_coeffs = None
     if pod_file is not None:
         pod_coeffs = np.load(pod_file)['coeffs_std']
 
-    dataset = CVAEDataset(data_flat, pod_coeffs=pod_coeffs)
+    dataset = CVAEDataset(data_spatial, pod_coeffs=pod_coeffs)
     loader = DataLoader(dataset, batch_size=batch_size, shuffle=False, num_workers=0)
 
     model.eval()

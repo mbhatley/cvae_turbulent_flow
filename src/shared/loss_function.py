@@ -36,7 +36,6 @@ class CVAELoss(nn.Module):
             log_term = torch.log(torch.sum(p**alpha * q**(1-alpha), dim=1))
             return torch.mean(log_term / (alpha - 1))
 
-
     @staticmethod
     def compute_gradient_loss(prediction, target, grid_shape, mask=None):
         """
@@ -44,6 +43,7 @@ class CVAELoss(nn.Module):
         Forces the model to keep edges sharp and turbulent.
         mask: [batch, grid_size] float tensor (1=valid, 0=NaN), or None.
         """
+        # CRITICAL FIX: Ensure dimensions are explicitly unpacked from grid_shape at the very start
         x_dim, y_dim, z_dim = grid_shape
 
         prediction = prediction.view(-1, 1, x_dim, y_dim, z_dim)
@@ -71,6 +71,41 @@ class CVAELoss(nn.Module):
             loss_dz = F.l1_loss(pred_dz, target_dz)
 
         return loss_dx + loss_dy + loss_dz
+
+    # @staticmethod
+    # def compute_gradient_loss(prediction, target, grid_shape, mask=None):
+    #     """
+    #     Calculates the L1 difference in gradients between prediction and target.
+    #     Forces the model to keep edges sharp and turbulent.
+    #     mask: [batch, grid_size] float tensor (1=valid, 0=NaN), or None.
+    #     """
+    #     # x_dim, y_dim, z_dim = grid_shape
+    #     #
+    #     # prediction = prediction.view(-1, 1, x_dim, y_dim, z_dim)
+    #     # target     = target.view(-1, 1, x_dim, y_dim, z_dim)
+    #
+    #     pred_dx = torch.abs(prediction[:, :, 1:, :, :] - prediction[:, :, :-1, :, :])
+    #     pred_dy = torch.abs(prediction[:, :, :, 1:, :] - prediction[:, :, :, :-1, :])
+    #     pred_dz = torch.abs(prediction[:, :, :, :, 1:] - prediction[:, :, :, :, :-1])
+    #
+    #     target_dx = torch.abs(target[:, :, 1:, :, :] - target[:, :, :-1, :, :])
+    #     target_dy = torch.abs(target[:, :, :, 1:, :] - target[:, :, :, :-1, :])
+    #     target_dz = torch.abs(target[:, :, :, :, 1:] - target[:, :, :, :, :-1])
+    #
+    #     if mask is not None:
+    #         m = mask.view(-1, 1, x_dim, y_dim, z_dim)
+    #         mx = m[:, :, 1:, :, :] * m[:, :, :-1, :, :]
+    #         my = m[:, :, :, 1:, :] * m[:, :, :, :-1, :]
+    #         mz = m[:, :, :, :, 1:] * m[:, :, :, :, :-1]
+    #         loss_dx = (torch.abs(pred_dx - target_dx) * mx).sum() / (mx.sum() + 1e-8)
+    #         loss_dy = (torch.abs(pred_dy - target_dy) * my).sum() / (my.sum() + 1e-8)
+    #         loss_dz = (torch.abs(pred_dz - target_dz) * mz).sum() / (mz.sum() + 1e-8)
+    #     else:
+    #         loss_dx = F.l1_loss(pred_dx, target_dx)
+    #         loss_dy = F.l1_loss(pred_dy, target_dy)
+    #         loss_dz = F.l1_loss(pred_dz, target_dz)
+    #
+    #     return loss_dx + loss_dy + loss_dz
 
     @staticmethod
     def compute_loss(recon_batch, data, mu, logvar, grid_shape, beta=1.0,

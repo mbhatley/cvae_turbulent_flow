@@ -56,6 +56,8 @@ def main():
         model, train_loader, test_loader, device, grid_shape, epochs=300
     )
 
+    save_model(model, run_dir)
+
     export_reconstructions_npy(
         model=model,
         numpy_file=str(DATA_DIR / 'skewnormal_gev_t.npy'),

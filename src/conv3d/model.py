@@ -5,6 +5,33 @@ from torch import nn
 from torch.nn import functional as F
 
 # ============================================================================
+# Deconvolution sharpening
+# ============================================================================
+
+class PixelShuffle3d(nn.Module):
+    """3D PixelShuffle upsampling layer for fine spatial details."""
+    def __init__(self, scale_factor=2):
+        super().__init__()
+        self.scale = scale_factor
+
+    def forward(self, x):
+        batch, c, d, h, w = x.size()
+        r = self.scale
+        assert c % (r**3) == 0, f"Channels {c} must be divisible by scale^3 ({r**3})"
+
+        out_c = c // (r**3)
+        # Split channel dimension into spatial factor components
+        x = x.view(batch, out_c, r, r, r, d, h, w)
+        # Permute to interleave dimensions into spatial coordinates
+        x = x.permute(0, 1, 5, 2, 6, 3, 7, 4).contiguous()
+        # Collapse back to 5D tensor
+        return x.view(batch, out_c, d * r, h * r, w * r)
+
+
+
+
+
+# ============================================================================
 # 3D Convolutional Encoder
 # ============================================================================
 
@@ -36,7 +63,7 @@ class Conv3DEncoder(nn.Module):
         target_z = self._calc_conv_output_size(grid_shape[2], num_layers=3, kernel=3, stride=2, padding=1)
 
         self.bottleneck_shape = (target_x, target_y, target_z)
-        self.pool = nn.AdaptiveAvgPool3d(self.bottleneck_shape)
+        # self.pool = nn.AdaptiveAvgPool3d(self.bottleneck_shape)
         self.flattened_size = 64 * target_x * target_y * target_z
 
         self.dropout = nn.Dropout(dropout_rate)
@@ -78,13 +105,13 @@ class Conv3DEncoder(nn.Module):
         :return: mu, logvar
         """
         batch_size = x.size(0)
-        x = x.view(batch_size, 1, self.grid_shape[0], self.grid_shape[1], self.grid_shape[2])
+        # x = x.view(batch_size, 1, self.grid_shape[0], self.grid_shape[1], self.grid_shape[2])
 
         x = F.gelu(self.bn1(self.conv1(x)))
         x = F.gelu(self.bn2(self.conv2(x)))
         x = F.gelu(self.bn3(self.conv3(x)))
 
-        x = self.pool(x)
+        # x = self.pool(x)
         x = x.view(batch_size, -1)
         x = self.dropout(x)
 
@@ -128,11 +155,35 @@ class Conv3DDecoder(nn.Module):
             nn.GELU()
         )
 
-        self.deconv1 = nn.ConvTranspose3d(in_channels=64, out_channels=32, kernel_size=3, stride=2, padding=1)
-        self.bn1     = nn.GroupNorm(8, 32)
-        self.deconv2 = nn.ConvTranspose3d(in_channels=32, out_channels=16,  kernel_size=3, stride=2, padding=1)
-        self.bn2     = nn.GroupNorm(8, 16)
-        self.deconv3 = nn.ConvTranspose3d(in_channels=16,  out_channels=1,  kernel_size=3, stride=2, padding=1)
+        # --- Layer 1: Upsample from 64 channels to 32 channels ---
+        self.up1 = nn.Sequential(
+            nn.Conv3d(in_channels=64, out_channels=32 * 8, kernel_size=3, padding=1),
+            PixelShuffle3d(scale_factor=2),
+            nn.GroupNorm(8, 32),
+            nn.GELU()
+        )
+
+        # --- Layer 2: Upsample from 32 channels to 16 channels ---
+        self.up2 = nn.Sequential(
+            nn.Conv3d(in_channels=32, out_channels=16 * 8, kernel_size=3, padding=1),
+            PixelShuffle3d(scale_factor=2),
+            nn.GroupNorm(8, 16),
+            nn.GELU()
+        )
+
+        # --- Layer 3: Upsample from 16 channels down to 1 target channel ---
+        self.up3 = nn.Sequential(
+            nn.Conv3d(in_channels=16, out_channels=1 * 8, kernel_size=3, padding=1),
+            PixelShuffle3d(scale_factor=2),
+            nn.Conv3d(in_channels=1, out_channels=1, kernel_size=3, padding=1)
+            # Final convolution refines the boundaries without upsampling
+        )
+
+        #self.deconv1 = nn.ConvTranspose3d(in_channels=64, out_channels=32, kernel_size=3, stride=2, padding=1)
+        # self.bn1     = nn.GroupNorm(8, 32)
+        # self.deconv2 = nn.ConvTranspose3d(in_channels=32, out_channels=16,  kernel_size=3, stride=2, padding=1)
+        # self.bn2     = nn.GroupNorm(8, 16)
+        # self.deconv3 = nn.ConvTranspose3d(in_channels=16,  out_channels=1,  kernel_size=3, stride=2, padding=1)
 
         #self.final_resize = nn.AdaptiveMaxPool3d((x_dim, y_dim, z_dim))
         self.grid_bias    = nn.Parameter(torch.zeros(self.n_grid_points))
@@ -155,29 +206,52 @@ class Conv3DDecoder(nn.Module):
                     nn.init.constant_(m.bias, 0)
         nn.init.constant_(self.grid_bias, -0.001)
 
+    # def forward(self, z, c):
+    #     """
+    #     :param z: latent vector (batch, latent_size)
+    #     :param c: class conditioning (batch, class_size)
+    #     :return: reconstructed grid (batch, n_grid_points)
+    #     """
+    #     batch_size = z.size(0)
+    #
+    #     x = self.conv_proj(torch.cat([z, c], dim=1) if c is not None else z)
+    #     x = x.view(batch_size, 64, self.start_x, self.start_y, self.start_z)
+    #
+    #     x = F.gelu(self.bn1(self.deconv1(x)))
+    #     x = self.dropout(x)
+    #     x = F.gelu(self.bn2(self.deconv2(x)))
+    #     x = self.dropout(x)
+    #     x = self.deconv3(x)
+    #
+    #     #x = self.final_resize(x)
+    #     x = F.interpolate(x, size=self.grid_shape, mode='trilinear', align_corners=False)
+    #     #x = x.view(batch_size, -1)
+    #
+    #     return torch.sigmoid(x.view(batch_size, -1))
+    #     #return x.clamp(0,1) if not self.training else x
+
     def forward(self, z, c):
-        """
-        :param z: latent vector (batch, latent_size)
-        :param c: class conditioning (batch, class_size)
-        :return: reconstructed grid (batch, n_grid_points)
-        """
         batch_size = z.size(0)
 
+        # Combine latent vector and conditioning features
         x = self.conv_proj(torch.cat([z, c], dim=1) if c is not None else z)
         x = x.view(batch_size, 64, self.start_x, self.start_y, self.start_z)
 
-        x = F.gelu(self.bn1(self.deconv1(x)))
+        # Clean, sharp upsampling blocks
+        x = self.up1(x)
         x = self.dropout(x)
-        x = F.gelu(self.bn2(self.deconv2(x)))
+        x = self.up2(x)
         x = self.dropout(x)
-        x = self.deconv3(x)
+        x = self.up3(x)
 
-        #x = self.final_resize(x)
-        x = F.interpolate(x, size=self.grid_shape, mode='trilinear', align_corners=False)
-        #x = x.view(batch_size, -1)
+        # PixelShuffle3d upsamples by a fixed 8x per layer, but the encoder's
+        # strided convs floor-divide the input size, so the round trip only
+        # matches grid_shape when every dim is a multiple of 8 at the input.
+        # Resize back to the exact target grid to correct for that.
+        if x.shape[-3:] != tuple(self.grid_shape):
+            x = F.interpolate(x, size=self.grid_shape, mode='trilinear', align_corners=False)
 
-        return torch.sigmoid(x.view(batch_size, -1))
-        #return x.clamp(0,1) if not self.training else x
+        return torch.sigmoid(x)
 
 
 # ============================================================================

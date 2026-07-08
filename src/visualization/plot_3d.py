@@ -261,8 +261,8 @@ class CVAEVisuals():
         for sample_idx in range(n_examples):
             fig = plt.figure(figsize=(20, 12))
 
-            orig_data = originals[sample_idx]
-            recon_data = reconstructions[sample_idx]
+            orig_data = originals[sample_idx].flatten()
+            recon_data = reconstructions[sample_idx].flatten()
 
             # Get value ranges for consistent coloring
             vmin = min(orig_data.min(), recon_data.min())
