@@ -2,7 +2,7 @@ import numpy as np
 
 import torch
 from torch.utils.data import Dataset, DataLoader
-
+from sklearn.model_selection import train_test_split
 
 
 class CVAEDataset(Dataset):
@@ -86,10 +86,8 @@ class CVAESetup():
             n_modes = int(pod_data['n_modes'])
             print(f"POD conditioning: {n_modes} modes, {pod_coeffs.shape[0]} samples")
 
-        indices   = np.arange(n_images)
-        split     = int(0.8 * n_images)
-        train_idx = indices[:split]
-        test_idx  = indices[split:]
+        indices = np.arange(n_images)
+        train_idx, test_idx = train_test_split(indices, test_size=0.2, random_state=42)
 
         # Slice the structured spatial tensors instead of flattened arrays
         train_data = data_spatial[train_idx]

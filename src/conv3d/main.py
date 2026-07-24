@@ -3,6 +3,7 @@
 ## latent space 64 -> 128
 ## dropout rate 0.2 -> 0.1
 
+import argparse
 import os
 from pathlib import Path
 from datetime import datetime
@@ -16,22 +17,25 @@ import torch
 
 from src.shared.data_loader import CVAESetup
 from src.shared.save_emulation import save_model, export_reconstructions_npy, evaluate_model
+from src.shared.seed import set_seed
 from src.conv3d.model import CVAE
 from src.conv3d.train import train_model
 from src.visualization.plot_3d import CVAEVisuals
 
 
-def main():
+def main(seed=42):
     """
     Main training pipeline — single 80/20 chronological train/test split.
     """
 
-    pod_file = str(DATA_DIR / 't_pod_basis.npz')
+    set_seed(seed)
+
+    pod_file = str(DATA_DIR / 'u3_pod_basis.npz')
     pod_data = np.load(pod_file)
     n_modes = int(pod_data['n_modes'])
 
     setup = CVAESetup(
-        numpy_file=str(DATA_DIR / 'skewnormal_gev_t.npy'),
+        numpy_file=str(DATA_DIR / 'u3_original_norm.npy'),
         batch_size=8,
         pod_file=pod_file,
     )
@@ -40,14 +44,14 @@ def main():
     device = setup.setup_device()
 
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-    run_dir = f"results_{timestamp}"
+    run_dir = f"results_{timestamp}_seed{seed}"
     os.makedirs(run_dir, exist_ok=True)
 
     train_loader, test_loader, grid_shape, grid_size = setup.load_data()
 
     model = CVAE(
         grid_shape=grid_shape,
-        latent_size=256,
+        latent_size=128,
         class_size=n_modes,
         dropout_rate=0.05,
     ).to(device)
@@ -60,9 +64,9 @@ def main():
 
     export_reconstructions_npy(
         model=model,
-        numpy_file=str(DATA_DIR / 'skewnormal_gev_t.npy'),
+        numpy_file=str(DATA_DIR / 'u3_original_norm.npy'),
         device=device,
-        output_file=os.path.join(run_dir, 'reconstructions_t.npy'),
+        output_file=os.path.join(run_dir, 'reconstructions_u3.npy'),
         batch_size=8,
         pod_file=pod_file,
     )
@@ -78,4 +82,8 @@ def main():
 
 
 if __name__ == "__main__":
-    main()
+    parser = argparse.ArgumentParser()
+    parser.add_argument('--seed', type=int, default=42, help='Random seed for model init, dropout, and batch shuffling')
+    args = parser.parse_args()
+
+    main(seed=args.seed)
