@@ -312,6 +312,17 @@ class CVAE(nn.Module):
         recon      = self.decode(z, c)
         return recon, mu, logvar
 
+    def reconstruct(self, x, c):
+        """Deterministic reconstruction from the posterior mean (no sampling
+        noise). Use this instead of forward() for evaluation/inference --
+        forward() samples z even in eval mode, which is correct for training
+        (Monte Carlo estimate of the ELBO) but adds spurious variance to a
+        reconstruction metric.
+        """
+        mu, logvar = self.encode(x, c)
+        recon      = self.decode(mu, c)
+        return recon, mu, logvar
+
     def sample_prior(self, n_samples, c):
         """
         Sample from prior for generation.

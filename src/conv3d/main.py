@@ -35,7 +35,7 @@ def main(seed=42):
     n_modes = int(pod_data['n_modes'])
 
     setup = CVAESetup(
-        numpy_file=str(DATA_DIR / 'u3_original_norm.npy'),
+        numpy_file=str(DATA_DIR / 'skewnormal_gev_u3.npy'),
         batch_size=8,
         pod_file=pod_file,
     )
@@ -64,7 +64,7 @@ def main(seed=42):
 
     export_reconstructions_npy(
         model=model,
-        numpy_file=str(DATA_DIR / 'u3_original_norm.npy'),
+        numpy_file=str(DATA_DIR / 'skewnormal_gev_u3.npy'),
         device=device,
         output_file=os.path.join(run_dir, 'reconstructions_u3.npy'),
         batch_size=8,

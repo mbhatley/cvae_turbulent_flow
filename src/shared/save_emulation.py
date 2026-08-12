@@ -63,7 +63,7 @@ def export_reconstructions_npy(model, numpy_file, device,
     with torch.no_grad():
         for batch_idx, batch_data in enumerate(loader):
             data_batch, _, conditioning = [item.to(device) for item in batch_data]
-            recon, _, _ = model(data_batch, conditioning)
+            recon, _, _ = model.reconstruct(data_batch, conditioning)
             all_recons.append(recon.cpu().numpy())
             if (batch_idx + 1) % 10 == 0:
                 print(f"  Processed {min((batch_idx+1)*batch_size, n_images)}/{n_images}")
@@ -93,8 +93,7 @@ def evaluate_model(model, test_loader, device, save_latents=False, save_dir='res
         for batch_data in test_loader:
             data, mask, conditioning = [item.to(device) for item in batch_data]
 
-            mu, logvar = model.encode(data, conditioning)
-            recon, _, _ = model(data, conditioning)
+            recon, mu, logvar = model.reconstruct(data, conditioning)
 
             all_mu.append(mu.cpu().numpy())
             all_logvar.append(logvar.cpu().numpy())

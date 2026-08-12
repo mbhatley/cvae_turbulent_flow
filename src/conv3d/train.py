@@ -10,9 +10,17 @@ from torch.optim import AdamW
 from src.shared.loss_function import compute_loss
 from src.shared.scheduler import get_scheduler
 
+# 'beta_end': 0.5919339318126805, 'extreme_weight': 1.1658814865210436, 'renyi_weight': 0.16820703192190561, 'grad_weight': 0.003369430123862675}
 
 def train_model(model, train_loader, test_loader, device, grid_shape,
-                epochs=210, initial_lr=1e-4, beta_start=0.05, beta_end=0.7):
+                epochs=210, initial_lr=1e-4, beta_start=0.05, beta_end=0.5919,
+                extreme_weight=1.1659, renyi_weight=0.1682, grad_weight=0.0034, loss='l1',
+                trial=None):
+    """
+    :param trial: optional optuna.Trial. When given, the test total_loss is
+        reported after every epoch and the trial is pruned early if it looks
+        unpromising relative to other trials at the same epoch.
+    """
 
     optimizer = AdamW(model.parameters(), lr=initial_lr, weight_decay=1e-5)
     scheduler, step_type = get_scheduler(optimizer, epochs, 100)
@@ -36,7 +44,10 @@ def train_model(model, train_loader, test_loader, device, grid_shape,
 
             optimizer.zero_grad()
             recon, mu, logvar = model(data, conditioning)
-            total_loss, recon_loss, kl_loss = compute_loss(recon, data, mu, logvar, grid_shape, beta=beta, mask=mask)
+            total_loss, recon_loss, kl_loss = compute_loss(
+                recon, data, mu, logvar, grid_shape, beta=beta, mask=mask,
+                extreme_weight=extreme_weight, renyi_weight=renyi_weight,
+                grad_weight=grad_weight, loss=loss)
             total_loss.backward()
             torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=1.0)
             optimizer.step()
@@ -55,7 +66,10 @@ def train_model(model, train_loader, test_loader, device, grid_shape,
             for batch_data in test_loader:
                 data, mask, conditioning = [item.to(device) for item in batch_data]
                 recon, mu, logvar = model(data, conditioning)
-                test_loss, recon_loss, kl_loss = compute_loss(recon, data, mu, logvar, grid_shape, beta=beta, mask=mask)
+                test_loss, recon_loss, kl_loss = compute_loss(
+                    recon, data, mu, logvar, grid_shape, beta=beta, mask=mask,
+                    extreme_weight=extreme_weight, renyi_weight=renyi_weight,
+                    grad_weight=grad_weight, loss=loss)
                 epoch_test_loss += test_loss.item()
                 epoch_test_recon += recon_loss.item()
                 epoch_test_kl += kl_loss.item()
@@ -79,6 +93,12 @@ def train_model(model, train_loader, test_loader, device, grid_shape,
 
         if step_type == 'epoch':
             scheduler.step()
+
+        if trial is not None:
+            trial.report(avg_test_loss, epoch)
+            if trial.should_prune():
+                import optuna
+                raise optuna.TrialPruned()
 
         if epoch % 10 == 0 or epoch == 1:
             print(f'Epoch {epoch:3d}: Train={avg_train_loss:.4f}, Test={avg_test_loss:.4f}, LR={current_lr:.2e}')
